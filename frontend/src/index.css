@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-ableton-border;
+  }
+
+  body {
+    @apply bg-ableton-bg text-ableton-text antialiased;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-ableton-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ableton-surface-light rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ableton-border;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-ableton-bg;
+  }
+
+  .btn-primary {
+    @apply btn bg-ableton-accent text-white hover:bg-ableton-accent-hover 
+           focus:ring-ableton-accent;
+  }
+
+  .btn-secondary {
+    @apply btn bg-ableton-surface text-ableton-text hover:bg-ableton-surface-light 
+           border border-ableton-border focus:ring-ableton-border;
+  }
+
+  .btn-danger {
+    @apply btn bg-ableton-danger text-white hover:bg-red-600 
+           focus:ring-ableton-danger;
+  }
+
+  .btn-success {
+    @apply btn bg-ableton-success text-white hover:bg-green-600 
+           focus:ring-ableton-success;
+  }
+
+  .card {
+    @apply bg-ableton-surface rounded-xl border border-ableton-border p-4 
+           transition-all duration-200 hover:border-ableton-surface-light;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 bg-ableton-bg border border-ableton-border rounded-lg 
+           text-ableton-text placeholder-ableton-text-muted
+           focus:outline-none focus:ring-2 focus:ring-ableton-accent focus:border-transparent;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-trash {
+    @apply badge bg-red-900/50 text-red-300 border border-red-700;
+  }
+
+  .badge-salvage {
+    @apply badge bg-yellow-900/50 text-yellow-300 border border-yellow-700;
+  }
+
+  .badge-must-finish {
+    @apply badge bg-green-900/50 text-green-300 border border-green-700;
+  }
+
+  .badge-untriaged {
+    @apply badge bg-gray-700/50 text-gray-300 border border-gray-600;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-ableton-accent to-ableton-purple;
+  }
+
+  .glow {
+    box-shadow: 0 0 20px rgba(255, 118, 77, 0.3);
+  }
+
+  .glass {
+    @apply bg-ableton-surface/80 backdrop-blur-lg;
+  }
+}
+
