@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.migration import MigrationService
+from app.services.studio import auto_populate_studio
+from app.services.triage import get_project_stats
 from app.models.migration import (
     MigrationPreviewRequest,
     MigrationExecuteRequest,
@@ -42,16 +44,32 @@ async def preview_migration(
 ):
     """
     Generate a migration plan preview (dry-run).
-    
+
     This shows what operations would be performed without
     actually moving any files.
     """
+    # Phase prerequisite: ensure projects have been scanned and triaged
+    stats = await get_project_stats(db)
+    if stats['total'] == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No projects found. Complete Phase 1 (scan) first."
+        )
+    if stats['total'] == stats['untriaged']:
+        raise HTTPException(
+            status_code=400,
+            detail="All projects are untriaged. Complete Phase 2 (triage) first."
+        )
+
     service = MigrationService(db)
-    plan = await service.generate_migration_plan(
-        archive_destination=request.archive_destination,
-        curated_destination=request.curated_destination
-    )
-    
+    try:
+        plan = await service.generate_migration_plan(
+            archive_destination=request.archive_destination,
+            curated_destination=request.curated_destination
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     return MigrationPlanResponse(
         timestamp=plan.timestamp,
         operations=[op.model_dump() for op in plan.operations],
@@ -67,32 +85,60 @@ async def execute_migration(
 ):
     """
     Execute a migration plan.
-    
+
     This actually moves files and creates a manifest for rollback.
+    Validates project dependencies before executing.
     """
     service = MigrationService(db)
-    
+
     # Generate the plan using the user-provided destinations
-    plan = await service.generate_migration_plan(
-        archive_destination=request.archive_destination,
-        curated_destination=request.curated_destination
-    )
-    
+    try:
+        plan = await service.generate_migration_plan(
+            archive_destination=request.archive_destination,
+            curated_destination=request.curated_destination
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Validate dependencies for curated (must-finish) projects before executing
+    curated_projects = await service._get_curated_projects()
+    dependency_errors = []
+    for project in curated_projects:
+        validation = await service.validate_project(project.id)
+        if not validation.get('valid', False):
+            dependency_errors.append(
+                f"{project.project_name}: {validation.get('error', 'has external dependencies')}"
+            )
+
+    if dependency_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Projects have unresolved dependencies",
+                "errors": dependency_errors,
+            }
+        )
+
     result = await service.execute_migration(plan, request.manifest_path)
-    
+
     if not result.success:
         return {
             "message": "Migration completed with errors",
-            "manifest_id": 0,  # Would get from DB
+            "manifest_id": result.manifest_id,
             "completed": result.operations_completed,
             "failed": result.operations_failed,
             "errors": result.errors
         }
-    
+
+    # Auto-populate studio with migrated must-finish projects
+    studio_created = await auto_populate_studio(db)
+
     return {
         "message": "Migration completed successfully",
+        "manifest_id": result.manifest_id,
         "manifest_path": result.manifest_path,
-        "completed": result.operations_completed
+        "completed": result.operations_completed,
+        "studio_projects_created": studio_created
     }
 
 

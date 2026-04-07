@@ -74,6 +74,11 @@ async def stream_audio(
     if not resolved.is_file():
         raise HTTPException(status_code=404, detail="Audio file not found")
 
+    # Verify resolved path is within the project's directory
+    project_dir = Path(project.project_path).resolve()
+    if not resolved.is_relative_to(project_dir):
+        raise HTTPException(status_code=403, detail="Audio file path escapes project directory")
+
     return FileResponse(
         path=str(resolved),
         media_type=mime_type,

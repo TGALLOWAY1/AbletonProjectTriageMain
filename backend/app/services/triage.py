@@ -118,11 +118,11 @@ async def update_triage_status(
     if status not in [s.value for s in TriageStatus]:
         raise ValueError(f"Invalid triage status: {status}")
     
-    project.triage_status = status
-    
-    # Reset hygiene status if changing to a new triage status
-    if status != TriageStatus.MUST_FINISH.value:
+    # Reset hygiene status whenever triage status actually changes
+    if status != project.triage_status:
         project.hygiene_status = HygieneStatus.PENDING.value
+
+    project.triage_status = status
     
     await db.commit()
     await db.refresh(project)

@@ -1,6 +1,7 @@
 """API routes for Phase 1: Deep Scan."""
 
 import os
+import asyncio
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ from app.services.scanner import (
     update_cluster_scores, deduplicate_clusters
 )
 from app.models.project import Project, ProjectResponse
+from app.utils.validators import get_safe_scan_paths, is_system_directory
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/scan", tags=["scan"])
 # Global scanner instance for tracking progress
 _scanner: Scanner = Scanner()
 _scan_results: List[ScannedProject] = []
+_scan_lock = asyncio.Lock()
 
 
 class ScanRequest(BaseModel):
@@ -123,20 +126,41 @@ async def start_scan(
     """
     global _scanner, _scan_results
 
-    # Only prevent starting if a scan is actively running
-    if _scanner.progress.status == "scanning":
-        raise HTTPException(
-            status_code=409,
-            detail="A scan is already in progress"
-        )
+    async with _scan_lock:
+        # Only prevent starting if a scan is actively running
+        if _scanner.progress.status == "scanning":
+            raise HTTPException(
+                status_code=409,
+                detail="A scan is already in progress"
+            )
 
-    # Always create a fresh scanner instance for a new scan
-    _scanner = Scanner()
-    _scan_results = []
+        # Validate and filter scan paths
+        safe_paths = get_safe_scan_paths(request.paths)
+        skipped_paths = [p for p in request.paths if p not in safe_paths]
 
-    background_tasks.add_task(run_scan, request.paths)
+        # Also filter out system directories
+        filtered_paths = [p for p in safe_paths if not is_system_directory(p)]
+        skipped_paths.extend([p for p in safe_paths if is_system_directory(p)])
 
-    return {"message": "Scan started", "paths": request.paths}
+        if not filtered_paths:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "No valid scan paths provided",
+                    "skipped": skipped_paths,
+                }
+            )
+
+        # Always create a fresh scanner instance for a new scan
+        _scanner = Scanner()
+        _scan_results = []
+
+    background_tasks.add_task(run_scan, filtered_paths)
+
+    response = {"message": "Scan started", "paths": filtered_paths}
+    if skipped_paths:
+        response["skipped_paths"] = skipped_paths
+    return response
 
 
 @router.get("/status", response_model=ScanProgressResponse)
