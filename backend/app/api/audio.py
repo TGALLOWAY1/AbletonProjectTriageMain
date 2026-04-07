@@ -69,8 +69,13 @@ async def stream_audio(
         else:
             mime_type = 'application/octet-stream'
     
+    # Resolve to absolute path and verify it doesn't escape via symlinks/traversal
+    resolved = path.resolve()
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
     return FileResponse(
-        path=str(path),
+        path=str(resolved),
         media_type=mime_type,
         filename=path.name
     )

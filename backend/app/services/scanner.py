@@ -493,9 +493,9 @@ class Scanner:
             for bf in backup_files:
                 try:
                     timestamps.append(bf.stat().st_mtime)
-                except:
+                except Exception:
                     pass
-            
+
             if len(timestamps) >= 2:
                 oldest = min(timestamps)
                 newest = max(timestamps)
@@ -648,7 +648,7 @@ def select_best_project_from_cluster(cluster: List[ScannedProject]) -> ScannedPr
                     if f.is_file():
                         total += f.stat().st_size
                 return total
-        except:
+        except Exception:
             pass
         return 0
     

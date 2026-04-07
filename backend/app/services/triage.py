@@ -9,6 +9,12 @@ from app.models.project import (
     ProjectResponse
 )
 
+ALLOWED_SORT_COLUMNS = {
+    "signal_score", "project_name", "project_path",
+    "bpm", "time_spent_days", "backup_count",
+    "created_at", "updated_at", "triage_status", "hygiene_status",
+}
+
 
 async def get_projects(
     db: AsyncSession,
@@ -64,8 +70,10 @@ async def get_projects(
             )
         )
     
-    # Apply sorting
-    sort_column = getattr(Project, sort_by, Project.signal_score)
+    # Apply sorting (whitelist to prevent attribute injection)
+    if sort_by not in ALLOWED_SORT_COLUMNS:
+        sort_by = "signal_score"
+    sort_column = getattr(Project, sort_by)
     if sort_order == "desc":
         query = query.order_by(sort_column.desc())
     else:

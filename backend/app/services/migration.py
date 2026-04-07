@@ -174,14 +174,32 @@ class MigrationService:
         # Update plan operations as we go
         updated_operations = []
         
+        archive_root = Path(plan.archive_destination).resolve()
+        curated_root = Path(plan.curated_destination).resolve()
+
         for op in plan.operations:
             try:
                 source = Path(op.source)
                 destination = Path(op.destination)
-                
+
+                # Validate destination is within the expected target directory
+                resolved_dest = destination.resolve()
+                if not (str(resolved_dest).startswith(str(archive_root))
+                        or str(resolved_dest).startswith(str(curated_root))):
+                    updated_operations.append(MigrationOperation(
+                        source=op.source,
+                        destination=op.destination,
+                        type=op.type,
+                        status="failed",
+                        error="Destination path escapes allowed directories"
+                    ))
+                    failed += 1
+                    errors.append(f"Path validation failed: {destination}")
+                    continue
+
                 # Create destination parent directory
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Perform the move
                 if source.exists():
                     shutil.move(str(source), str(destination))

@@ -72,11 +72,10 @@ async def execute_migration(
     """
     service = MigrationService(db)
     
-    # First regenerate the plan to ensure it's current
-    # In production, you'd want to pass the plan from preview
+    # Generate the plan using the user-provided destinations
     plan = await service.generate_migration_plan(
-        archive_destination="/tmp/archive",  # These should come from request
-        curated_destination="/tmp/curated"
+        archive_destination=request.archive_destination,
+        curated_destination=request.curated_destination
     )
     
     result = await service.execute_migration(plan, request.manifest_path)
