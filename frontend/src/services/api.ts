@@ -80,9 +80,11 @@ export const migrationApi = {
       curated_destination: curatedPath,
     }),
   
-  execute: (manifestPath: string) => 
-    api.post<{ message: string; manifest_id: number }>('/migration/execute', { 
-      manifest_path: manifestPath,
+  execute: (archivePath: string, curatedPath: string, manifestPath?: string) =>
+    api.post<{ message: string; manifest_id: number }>('/migration/execute', {
+      archive_destination: archivePath,
+      curated_destination: curatedPath,
+      ...(manifestPath && { manifest_path: manifestPath }),
     }),
   
   rollback: (manifestId: number) => 

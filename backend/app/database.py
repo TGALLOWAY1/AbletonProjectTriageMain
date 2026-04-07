@@ -28,11 +28,15 @@ async_session_maker = async_sessionmaker(
 
 
 async def get_db() -> AsyncSession:
-    """Dependency for getting database sessions."""
+    """Dependency for getting database sessions.
+
+    Note: Individual service functions are responsible for calling
+    db.commit() when they make changes. This dependency only handles
+    rollback on unhandled exceptions.
+    """
     async with async_session_maker() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise

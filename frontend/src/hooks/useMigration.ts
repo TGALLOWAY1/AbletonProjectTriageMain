@@ -32,11 +32,11 @@ export function useMigration() {
     }
   }, [])
 
-  const execute = useCallback(async (manifestPath: string) => {
+  const execute = useCallback(async (archivePath: string, curatedPath: string, manifestPath?: string) => {
     setExecuting(true)
     setError(null)
     try {
-      await migrationApi.execute(manifestPath)
+      await migrationApi.execute(archivePath, curatedPath, manifestPath)
       setPlan(null)
       await loadHistory()
     } catch (err) {

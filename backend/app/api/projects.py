@@ -10,9 +10,10 @@ from app.services.triage import (
     get_projects,
     get_project_by_id,
     update_triage_status,
-    update_hygiene_status,
     get_project_stats,
 )
+from app.services.hygiene import mark_as_harvested, mark_as_ready_for_migration
+from app.models.project import HygieneStatus
 from app.models.project import ProjectResponse
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -201,9 +202,18 @@ async def update_project_hygiene(
     request: HygieneUpdateRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Update the hygiene status of a project."""
+    """Update the hygiene status of a project.
+
+    Routes through the hygiene service which validates that
+    the triage status is appropriate for the requested transition.
+    """
     try:
-        project = await update_hygiene_status(db, project_id, request.status)
+        if request.status == HygieneStatus.HARVESTED.value:
+            project = await mark_as_harvested(db, project_id)
+        elif request.status == HygieneStatus.READY_FOR_MIGRATION.value:
+            project = await mark_as_ready_for_migration(db, project_id)
+        else:
+            raise ValueError(f"Invalid hygiene status: {request.status}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     

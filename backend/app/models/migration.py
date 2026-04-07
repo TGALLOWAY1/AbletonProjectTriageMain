@@ -74,7 +74,9 @@ class MigrationPreviewRequest(BaseModel):
 
 class MigrationExecuteRequest(BaseModel):
     """Schema for migration execution request."""
-    manifest_path: str
+    archive_destination: str
+    curated_destination: str
+    manifest_path: Optional[str] = None
 
 
 class MigrationRollbackRequest(BaseModel):

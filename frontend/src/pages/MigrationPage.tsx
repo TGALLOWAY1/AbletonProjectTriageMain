@@ -70,9 +70,7 @@ export default function MigrationPage() {
     
     setExecuting(true)
     try {
-      // In a real implementation, we'd save the manifest first
-      // then pass the path to execute
-      await migrationApi.execute('/tmp/migration_manifest.json')
+      await migrationApi.execute(archivePath, curatedPath)
       await loadData()
       setMigrationPlan(null)
     } catch (error) {
