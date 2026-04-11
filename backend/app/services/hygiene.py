@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Project, TriageStatus, HygieneStatus
+from app.utils.xml_parser import validate_project_dependencies
 
 
 async def get_projects_pending_harvest(db: AsyncSession) -> List[Project]:
@@ -86,7 +87,18 @@ async def mark_as_ready_for_migration(
     
     if project.triage_status != TriageStatus.MUST_FINISH.value:
         raise ValueError("Only must-finish projects can be marked as ready for migration")
-    
+
+    # Validate that project dependencies are self-contained (Collect All and Save)
+    dep_result = validate_project_dependencies(project.project_path)
+    if not dep_result.get('valid', False):
+        external_refs = dep_result.get('external_refs', [])
+        if external_refs:
+            raise ValueError(
+                f"Project has {len(external_refs)} external dependencies. "
+                f"Please run 'Collect All and Save' in Ableton first. "
+                f"External refs: {', '.join(external_refs[:5])}"
+            )
+
     project.hygiene_status = HygieneStatus.READY_FOR_MIGRATION.value
     await db.commit()
     await db.refresh(project)

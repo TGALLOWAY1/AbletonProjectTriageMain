@@ -1,6 +1,7 @@
 """Phase 4: Migration service for file operations."""
 
 import os
+import re
 import json
 import shutil
 from datetime import datetime
@@ -19,6 +20,7 @@ from app.models.migration import (
 )
 from app.config import settings
 from app.utils.xml_parser import validate_project_dependencies
+from app.utils.validators import validate_write_access
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,16 @@ class MigrationResult:
     operations_completed: int
     operations_failed: int
     errors: List[str]
+    manifest_id: int = 0
+
+
+def _sanitize_genre(genre: str) -> str:
+    """Sanitize genre string to prevent path injection."""
+    # Strip path separators, dots, and special characters
+    sanitized = re.sub(r'[^\w\s-]', '', genre).strip()
+    # Collapse whitespace
+    sanitized = re.sub(r'\s+', ' ', sanitized)
+    return sanitized or "Other"
 
 
 class MigrationService:
@@ -52,38 +64,53 @@ class MigrationService:
     ) -> MigrationPlan:
         """
         Generate a migration plan (dry-run preview).
-        
+
         Args:
             archive_destination: Path for trash/harvested projects
             curated_destination: Path for must-finish projects
             genre: Genre subfolder for curated projects
-            
+
         Returns:
             MigrationPlan with all planned operations
+
+        Raises:
+            ValueError: If destinations are not writable
         """
+        # Validate destination write access early
+        for dest_label, dest_path in [
+            ("archive", archive_destination),
+            ("curated", curated_destination),
+        ]:
+            is_writable, error = validate_write_access(dest_path)
+            if not is_writable:
+                raise ValueError(f"{dest_label} destination not writable: {error}")
+
+        # Sanitize genre to prevent path injection
+        genre = _sanitize_genre(genre)
+
         operations = []
-        
+
         # Get all projects ready for archive (trash + harvested salvage)
         trash_projects = await self._get_archive_projects()
-        
+
         # Get all must-finish projects ready for migration
         curated_projects = await self._get_curated_projects()
-        
+
         # Generate archive operations
         date_folder = datetime.now().strftime("%Y-%m-%d")
         archive_base = Path(archive_destination).expanduser() / date_folder
-        
+
         for project in trash_projects:
             project_dir = Path(project.project_path).parent
             dest = archive_base / project_dir.name
-            
+
             operations.append(MigrationOperation(
                 source=str(project_dir),
                 destination=str(dest),
                 type="archive",
                 status="pending"
             ))
-        
+
         # Generate curated operations
         curated_base = Path(curated_destination).expanduser() / genre
         
@@ -184,8 +211,8 @@ class MigrationService:
 
                 # Validate destination is within the expected target directory
                 resolved_dest = destination.resolve()
-                if not (str(resolved_dest).startswith(str(archive_root))
-                        or str(resolved_dest).startswith(str(curated_root))):
+                if not (resolved_dest.is_relative_to(archive_root)
+                        or resolved_dest.is_relative_to(curated_root)):
                     updated_operations.append(MigrationOperation(
                         source=op.source,
                         destination=op.destination,
@@ -260,13 +287,15 @@ class MigrationService:
         )
         self.db.add(manifest_record)
         await self.db.commit()
-        
+        await self.db.refresh(manifest_record)
+
         return MigrationResult(
             success=failed == 0,
             manifest_path=manifest_path,
             operations_completed=completed,
             operations_failed=failed,
-            errors=errors
+            errors=errors,
+            manifest_id=manifest_record.id
         )
     
     async def rollback_migration(self, manifest_id: int) -> MigrationResult:

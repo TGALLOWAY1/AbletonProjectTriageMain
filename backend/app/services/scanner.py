@@ -81,24 +81,29 @@ class Scanner:
     analyzes backup folders, and calculates signal scores.
     """
     
+    # Default scan timeout: 30 minutes
+    SCAN_TIMEOUT_SECONDS = 30 * 60
+
     def __init__(self):
         self.progress = ScanProgress()
         self._cancel_requested = False
-    
+
     def cancel(self):
         """Request cancellation of the current scan."""
         self._cancel_requested = True
-    
+
     async def scan_directories(
-        self, 
-        paths: List[str]
+        self,
+        paths: List[str],
+        timeout_seconds: Optional[int] = None,
     ) -> AsyncGenerator[ScannedProject, None]:
         """
         Scan directories for Ableton projects.
-        
+
         Args:
             paths: List of directory paths to scan
-            
+            timeout_seconds: Maximum scan duration (default 30 min)
+
         Yields:
             ScannedProject objects as they are discovered
         """
@@ -107,27 +112,42 @@ class Scanner:
             started_at=datetime.now().isoformat()
         )
         self._cancel_requested = False
-        
+        timeout = timeout_seconds or self.SCAN_TIMEOUT_SECONDS
+        scan_start = datetime.now()
+
         try:
             for base_path in paths:
                 base_path = os.path.expanduser(base_path)
-                
+
                 if not os.path.exists(base_path):
                     self.progress.errors.append(ScanError(
                         path=base_path,
                         error="Path does not exist"
                     ))
                     continue
-                
+
                 async for project in self._scan_directory(base_path):
                     if self._cancel_requested:
                         self.progress.status = "cancelled"
                         return
+
+                    # Check timeout
+                    elapsed = (datetime.now() - scan_start).total_seconds()
+                    if elapsed > timeout:
+                        self.progress.status = "completed"
+                        self.progress.completed_at = datetime.now().isoformat()
+                        self.progress.errors.append(ScanError(
+                            path=base_path,
+                            error=f"Scan timed out after {int(elapsed)}s"
+                        ))
+                        logger.warning(f"Scan timed out after {int(elapsed)}s")
+                        return
+
                     yield project
-            
+
             self.progress.status = "completed"
             self.progress.completed_at = datetime.now().isoformat()
-            
+
         except Exception as e:
             logger.error(f"Scan error: {e}")
             self.progress.status = "error"
@@ -515,17 +535,26 @@ class Scanner:
     
     def _find_audio_preview(self, project_dir: Path) -> Optional[str]:
         """Find an audio preview file (.wav or .mp3) in the project folder."""
-        for ext in ('*.wav', '*.mp3', '*.aif', '*.aiff'):
-            files = list(project_dir.glob(ext))
-            if files:
-                # Prefer files with "render", "export", "mix" in name
-                for f in files:
-                    name_lower = f.name.lower()
-                    if any(kw in name_lower for kw in ['render', 'export', 'mix', 'master']):
-                        return str(f)
-                # Otherwise return first found
-                return str(files[0])
-        return None
+        audio_extensions = {'.wav', '.wave', '.mp3', '.aif', '.aiff'}
+        preferred_keywords = ['render', 'export', 'mix', 'master']
+
+        # Collect all audio files (case-insensitive extension matching)
+        audio_files = [
+            f for f in project_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in audio_extensions
+        ]
+
+        if not audio_files:
+            return None
+
+        # Prefer files with priority keywords in name
+        for f in audio_files:
+            name_lower = f.name.lower()
+            if any(kw in name_lower for kw in preferred_keywords):
+                return str(f)
+
+        # Otherwise return first found
+        return str(audio_files[0])
     
     def _generate_cluster_id(self, filename: str) -> str:
         """
